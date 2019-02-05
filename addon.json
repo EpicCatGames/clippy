@@ -1,0 +1,10 @@
+{
+	"title"		:	"Clippy - Visual Clip Tool",
+	"type"		:	"tool",
+	"tags"		:	[ "build" ],
+	"ignore"	:
+	[
+		"*.svn*",
+		"*.git"
+	]
+}
