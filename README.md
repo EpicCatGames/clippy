@@ -1,2 +1,2 @@
 # clippy
-A better Visual Clip tool for garrysmod.
+A modern Visual Clip tool for garrysmod
