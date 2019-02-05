@@ -28,7 +28,7 @@ if SERVER then
 end
 
 -- Setup clippy
-Clippy = Clippy or { Version = 1, Debug = true }
+Clippy = Clippy or { Version = 1, Debug = false }
 
 -- Table that stores all of our entities with registered clips
 Clippy.Clips = Clippy.Clips or { }
