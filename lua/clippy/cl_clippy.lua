@@ -207,7 +207,10 @@ local function AddClip( clip )
 
     local ent = clip.Ent
 
-    if ( !IsValid( ent ) ) then return end
+    if ( !IsValid( ent ) ) then
+        Clippy.Log("AddClip received invalid entity")
+        return
+    end
 
     ent.ClippyData = ent.ClippyData or { }
     ent.Clipped = true

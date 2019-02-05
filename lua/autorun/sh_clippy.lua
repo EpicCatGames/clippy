@@ -28,7 +28,7 @@ if SERVER then
 end
 
 -- Setup clippy
-Clippy = Clippy or { Version = 1, Debug = false }
+Clippy = Clippy or { Version = 1, Debug = true }
 
 -- Table that stores all of our entities with registered clips
 Clippy.Clips = Clippy.Clips or { }
@@ -146,7 +146,7 @@ hook.Add( "InitPostEntity", "ClippyInitPostEntity", function()
     if CLIENT then
 
         -- Request clips from the server after loading in
-        timer.Simple( 3, function()
+        timer.Simple( 10, function()
 
             if ( IsValid( LocalPlayer() ) ) then
 
@@ -160,33 +160,7 @@ hook.Add( "InitPostEntity", "ClippyInitPostEntity", function()
 
     else
 
-        -- Backwards compatibility with ancient visual clip data
-        duplicator.RegisterEntityModifier( "clips", function( pl, ent, data ) 
-
-            if ( !IsValid( ent ) ) then return end
-
-            if ( data ) then
-
-                for _, oldclip in pairs( data ) do
-
-                    timer.Simple( 1, function()
-
-                        Clippy.Log("converting old clip format to new format")
-
-                        Clippy.RegisterClip( ent, oldclip.n, oldclip.d, oldclip.inside )
-
-                    end )
-
-                end
-
-            else
-
-                Clippy.Log(tostring( ent ) .." should have had old visclips, but data was invalid!")
-
-            end
-
-        end )
-
+        --[[
         -- This will stop the old VisClip from doing much, but it should be removed entirely from servers using Clippy
         if ( SendPropClip ) then
 
@@ -195,6 +169,7 @@ hook.Add( "InitPostEntity", "ClippyInitPostEntity", function()
             Clippy.Log("removed visual clips SendPropClip function for compatibility, but you should remove visual clip from your server entirely if you use clippy.")
             
         end
+        --]]
 
     end
 

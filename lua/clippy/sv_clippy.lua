@@ -1,3 +1,29 @@
+-- Backwards compatibility with ancient visual clip data
+duplicator.RegisterEntityModifier( "clips", function( pl, ent, data ) 
+
+    if ( !IsValid( ent ) ) then return end
+
+    if ( data ) then
+
+        for _, oldclip in pairs( data ) do
+
+            timer.Simple( 5, function()
+
+                Clippy.Log("converting old clip format to new format")
+
+                Clippy.RegisterClip( ent, oldclip.n, oldclip.d, oldclip.inside )
+
+            end )
+
+        end
+
+    else
+
+        Clippy.Log(tostring( ent ) .." should have had old visclips, but data was invalid!")
+
+    end
+
+end )
 
 -- Register entity modifier with the duplicator library
 duplicator.RegisterEntityModifier( "clippy", function( pl, ent, data )
@@ -10,7 +36,7 @@ duplicator.RegisterEntityModifier( "clippy", function( pl, ent, data )
         for _, clip in pairs( data ) do
 
             -- Let the entity become valid on the client before sending them the clip data?
-            timer.Simple( 1, function()
+            timer.Simple( 5, function()
 
                 Clippy.RegisterClip( ent, clip.Ang, clip.Distance, clip.Inside )
 
@@ -133,7 +159,10 @@ end
 -- Register a new clip
 function Clippy.RegisterClip( ent, ang, distance, inside )
 
-    if ( !IsValid( ent ) ) then return nil end
+    if ( !IsValid( ent ) ) then
+        Clippy.Log("RegisterClip received invalid entity")
+        return nil
+    end
 
     ent.ClippyData = ent.ClippyData or { }
 
@@ -278,7 +307,10 @@ end
 -- Send a single clip
 function Clippy.SendClip( ent, pl, id )
 
-    if ( !IsValid( ent ) ) then return end
+    if ( !IsValid( ent ) ) then
+        Clippy.Log("SendClip received invalid entity")
+        return
+    end
 
     local clip = ent.ClippyData[id]
 
