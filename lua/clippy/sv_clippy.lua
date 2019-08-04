@@ -1,48 +1,146 @@
--- Backwards compatibility with ancient visual clip data
-duplicator.RegisterEntityModifier( "clips", function( pl, ent, data ) 
+---- Backwards compatibility with ancient visual clip data
+--duplicator.RegisterEntityModifier( "clips", function( pl, ent, data ) 
+--
+--    if ( !IsValid( ent ) ) then return end
+--
+--    if ( data ) then
+--
+--        for _, oldclip in pairs( data ) do
+--
+--            timer.Simple( 5, function()
+--
+--                Clippy.Log("converting old clip format to new format")
+--
+--                Clippy.RegisterClip( ent, oldclip.n, oldclip.d, oldclip.inside )
+--
+--            end )
+--
+--        end
+--
+--    else
+--
+--        Clippy.Log(tostring( ent ) .." should have had old visclips, but data was invalid!")
+--
+--    end
+--
+--end )
+--
+---- Register entity modifier with the duplicator library
+--duplicator.RegisterEntityModifier( "clippy", function( pl, ent, data )
+--
+--    if ( !IsValid( ent ) ) then return end
+--
+--    if ( data ) then
+--        
+--        -- investigate only sending when the duplication has finished for better performance
+--        for _, clip in pairs( data ) do
+--
+--            -- Let the entity become valid on the client before sending them the clip data?
+--            timer.Simple( 5, function()
+--
+--                Clippy.RegisterClip( ent, clip.Ang, clip.Distance, clip.Inside )
+--
+--            end )
+--
+--        end
+--
+--    end
+--
+--end )
 
-    if ( !IsValid( ent ) ) then return end
+-- Setup clips from pastes and network them all at once, instead of one at a time like the old tool
+hook.Add( "AdvDupe_FinishPasting", "ClippyAdvDupeFinishPasting", function( tbl )
 
-    if ( data ) then
+    local DupeData = tbl[1]
 
-        for _, oldclip in pairs( data ) do
+    if ( DupeData == nil ) then return end
 
-            timer.Simple( 5, function()
+    Clippy.Log( "AdvDupe2 finished pasting dupe with ".. tostring( table.Count( DupeData.EntityList ) ) .." entities" )
 
-                Clippy.Log("converting old clip format to new format")
+    -- Table of clips to be networked
+    local Clips = { }
 
-                Clippy.RegisterClip( ent, oldclip.n, oldclip.d, oldclip.inside )
+    -- Loop through CreatedEntities, check their EntityMods for clip data, build a table of clip data, send all at once to players
+    for _, ent in pairs( DupeData.CreatedEntities ) do
 
-            end )
+        local OldClips = ent.EntityMods["clips"] or { }
+        local NewClips = ent.EntityMods["clippy"] or { }
+
+        if ( #OldClips == 0 and #NewClips == 0 ) then continue end
+
+        -- Build the clips table on the ent and for networking
+        ent.ClippyData = ent.ClippyData or { }
+
+        for _, clip in pairs( OldClips ) do
+
+            table.insert( Clips, {
+                EntIndex = ent:EntIndex(),
+                Version = clip.Version or 0,
+                Ang = Clippy.AngleToString( clip.n ),
+                Distance = Clippy.DistanceToString( clip.d ),
+                Inside = (clip.inside and 1 or 0)
+            } )
+
+            table.insert( ent.ClippyData, {
+                Version = clip.Version,
+                Ang = clip.n,
+                Distance = clip.d,
+                Inside = clip.inside
+            } )
+
+            -- NOTE: @looter keep a special table of the old clips for re-populating the "clips" duplicator modifier?
 
         end
 
-    else
+        for _, clip in pairs( NewClips ) do
 
-        Clippy.Log(tostring( ent ) .." should have had old visclips, but data was invalid!")
+            table.insert( Clips, {
+                EntIndex = ent:EntIndex(),
+                Version = clip.Version or 0,
+                Ang = Clippy.AngleToString( clip.Ang ),
+                Distance = Clippy.DistanceToString( clip.Distance ),
+                Inside = (clip.Inside and 1 or 0)
+            } )
+
+            table.insert( ent.ClippyData, {
+                Version = clip.Version or 0,
+                Ang = clip.Ang,
+                Distance = clip.Distance,
+                Inside = clip.Inside
+            } )
+
+        end
+
+        -- Store in the global clipped ents table for persistence
+        if ( !table.HasValue( Clippy.Clips, ent ) ) then
+
+            table.insert( Clippy.Clips, ent )
+
+        end
+
+        -- Store the clips back on the entity itself
+        if ( #NewClips > 0 ) then
+
+            duplicator.StoreEntityModifier( ent, "clippy", ent.ClippyData )
+            
+        end
+
+        if ( #OldClips > 0 ) then
+            
+            duplicator.StoreEntityModifier( ent, "clips", OldClips )
+
+        end
 
     end
 
-end )
-
--- Register entity modifier with the duplicator library
-duplicator.RegisterEntityModifier( "clippy", function( pl, ent, data )
-
-    if ( !IsValid( ent ) ) then return end
-
-    if ( data ) then
+    -- Send the clips over the network
+    if ( #Clips > 0 ) then
         
-        -- investigate only sending when the duplication has finished for better performance
-        for _, clip in pairs( data ) do
+        Clippy.Log("networking ".. tostring( #Clips ) .." clips from a paste to all players")
 
-            -- Let the entity become valid on the client before sending them the clip data?
-            timer.Simple( 5, function()
-
-                Clippy.RegisterClip( ent, clip.Ang, clip.Distance, clip.Inside )
-
-            end )
-
-        end
+        net.Start( "clippy_clips" )
+            net.WriteStructure( "clippy_clips", { Clips = Clips } )
+        net.Broadcast()
 
     end
 
@@ -286,7 +384,7 @@ function Clippy.UpdateClip( ent, id, tbl )
     ent.ClippyData[ id ] = clip
 
     local struct = {
-        Ent = ent,
+        EntIndex = ent:EntIndex(),
         Version = Clippy.Version,
         Ang = Clippy.AngleToString( clip.Ang ),
         Distance = Clippy.DistanceToString( clip.Distance ),
@@ -317,7 +415,7 @@ function Clippy.SendClip( ent, pl, id )
     if ( clip != nil ) then
         
         local struct = {
-            Ent = ent,
+            EntIndex = ent:EntIndex(),
             Version = Clippy.Version,
             Ang = Clippy.AngleToString( clip.Ang ),
             Distance = Clippy.DistanceToString( clip.Distance ),
@@ -355,7 +453,7 @@ function Clippy.SendClips( ent, pl )
         for _, clip in pairs( ent.ClippyData ) do
 
             table.insert( clips, {
-                Ent = ent,
+                EntIndex = ent:EntIndex(),
                 Version = Clippy.Version,
                 Ang = Clippy.AngleToString( clip.Ang ),
                 Distance = Clippy.DistanceToString( clip.Distance ),
@@ -375,7 +473,7 @@ function Clippy.SendClips( ent, pl )
                 for _, clip in pairs( entclips ) do
 
                     table.insert( clips, {
-                        Ent = ent,
+                        EntIndex = ent:EntIndex(),
                         Version = Clippy.Version,
                         Ang = Clippy.AngleToString( clip.Ang ),
                         Distance = Clippy.DistanceToString( clip.Distance ),

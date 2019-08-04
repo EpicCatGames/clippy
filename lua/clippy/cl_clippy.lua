@@ -1,6 +1,9 @@
 
-local Entity = FindMetaTable("Entity")
 local render = render
+
+-- Hashtable of entindex to clip table due to entities not being valid on the client until they are in PVS
+Clippy.Queue = Clippy.Queue or { }
+Clippy.Data = Clippy.Data or { }
 
 Clippy.PreviewModel = Clippy.PreviewModel or ClientsideModel("error.mdl")
 Clippy.Last = nil
@@ -65,7 +68,9 @@ end
 local function ClippyRenderOverride( ent )
 
     -- Draw clips
-    if ( ent.ClippyData and ent.Clipped ) then
+    local Clips = Clippy.Data[ ent:EntIndex() ] or { }
+
+    if ( #Clips > 0 and ent.Clipped ) then
         
         local col = ent:GetColor()
 
@@ -76,7 +81,7 @@ local function ClippyRenderOverride( ent )
         -- last clip rendered determines the inside setting, no real way to do it otherwise
         local inside = false
 
-        for i, clip in pairs( ent.ClippyData ) do
+        for i, clip in pairs( Clips ) do
 
             -- limit number of clips based on os maximum
             if ( i > Clippy.ClientMaxClips ) then continue end
@@ -104,7 +109,7 @@ local function ClippyRenderOverride( ent )
 
         end
 
-        for i, _ in pairs( ent.ClippyData ) do
+        for i, _ in pairs( Clips ) do
 
             -- limit number of clips based on os maximum
             if ( i > Clippy.ClientMaxClips ) then continue end
@@ -202,56 +207,123 @@ local function RefreshEditorTool()
 
 end
 
--- Networking clips
-local function AddClip( clip )
+local function ClippyOnRemoved( ent )
 
-    local ent = clip.Ent
+    Clippy.Log("removing ".. tostring( table.Count( Clippy.Data[ ent:EntIndex() ] ) ) .." clips from the cache for ".. tostring( ent:EntIndex() ))
+
+    Clippy.Data[ ent:EntIndex() ] = nil
+
+    RefreshEditorTool()
+
+end
+
+local function SetupEnt( ent )
 
     if ( !IsValid( ent ) ) then
-        Clippy.Log("AddClip received invalid entity")
+        Clippy.Log("SetupEnt called for invalid entity!")
         return
     end
 
-    ent.ClippyData = ent.ClippyData or { }
     ent.Clipped = true
+    ent.RenderOverride = ClippyRenderOverride
+    ent:CallOnRemove( "ClippyOnRemoved", ClippyOnRemoved )
+
+end
+
+-- Networking clips
+local function AddClip( clip )
 
     clip.Ang = Clippy.AngleFromString( clip.Ang )
     clip.Distance = Clippy.DistanceFromString( clip.Distance )
     clip.Inside = (clip.Inside > 0 and true or false)
 
-    Clippy.Log("adding ".. tostring(clip.Ang) .." clip to ".. tostring(ent))
+    local ent = Entity( clip.EntIndex )
 
-    table.insert( ent.ClippyData, clip )
+    if ( IsValid( ent ) ) then
 
-    ent.RenderOverride = ClippyRenderOverride
+        Clippy.Data[ clip.EntIndex ] = Clippy.Data[ clip.EntIndex ] or { }
 
-    ent:CallOnRemove( "ClippyOnRemoved", RefreshEditorTool )
+        table.insert( Clippy.Data[ clip.EntIndex ], clip )
+
+        if ( !ent.Clipped or ent.RenderOverride == nil ) then
+            
+            SetupEnt( ent )
+
+        end
+
+        Clippy.Log("clip added directly to cache for ".. tostring( clip.EntIndex ))
+
+    elseif ( Clippy.Queue[ clip.EntIndex ] ) then
+
+        table.insert( Clippy.Queue[ clip.EntIndex ], clip )
+
+        Clippy.Log("clip added to queue for ".. tostring( clip.EntIndex ))
+
+    else
+
+        Clippy.Queue[ clip.EntIndex ] = { clip }
+
+        Clippy.Log("clip added to new queue for ".. tostring( clip.EntIndex ))
+
+    end
     
 end
 
 local function UpdateClip( id, clip )
 
-    local ent = clip.Ent
-
-    if ( !IsValid( ent ) ) then
-        Clippy.Log("UpdateClip invalid ent received")
-        return
-    end
-
-    if ( ent.ClippyData[ id ] == nil ) then
-        Clippy.Log("UpdateClip invalid clip id received ".. tostring(id))
-        return
-    end
-
     clip.Ang = Clippy.AngleFromString( clip.Ang )
     clip.Distance = Clippy.DistanceFromString( clip.Distance )
     clip.Inside = (clip.Inside > 0 and true or false)
 
-    Clippy.Log("updating ".. tostring( ent ) .." clip ".. tostring( id ))
+    local ent = Entity( clip.EntIndex )
 
-    ent.ClippyData[ id ] = clip
+    if ( IsValid( ent ) ) then
 
-    RefreshEditorTool()
+        if ( Clippy.Data[ clip.EntIndex ] == nil ) then
+
+            Clippy.Log("UpdateClip received ent not in cache yet, adding clip instead")
+
+            AddClip( clip )
+            return
+
+        end
+
+        if ( Clippy.Data[ clip.EntIndex ][ id ] == nil ) then
+
+            Clippy.Log("UpdateClip received invalid clip id for ".. tostring( clip.EntIndex ) .." [".. tostring( id ) .."], skipping")
+            return
+        
+        end
+
+        Clippy.Data[ clip.EntIndex ][ id ] = clip
+
+    elseif ( Clippy.Queue[ clip.EntIndex ] ) then
+
+    else
+
+    end
+
+--    local ent = clip.Ent
+--
+--    if ( !IsValid( ent ) ) then
+--        Clippy.Log("UpdateClip invalid ent received")
+--        return
+--    end
+--
+--    if ( ent.ClippyData[ id ] == nil ) then
+--        Clippy.Log("UpdateClip invalid clip id received ".. tostring(id))
+--        return
+--    end
+--
+--    clip.Ang = Clippy.AngleFromString( clip.Ang )
+--    clip.Distance = Clippy.DistanceFromString( clip.Distance )
+--    clip.Inside = (clip.Inside > 0 and true or false)
+--
+--    Clippy.Log("updating ".. tostring( ent ) .." clip ".. tostring( id ))
+--
+--    ent.ClippyData[ id ] = clip
+--
+--    RefreshEditorTool()
 
 end
 
@@ -267,17 +339,17 @@ end )
 net.Receive( "clippy_clip", function()
 
     local clip = net.ReadStructure( "clippy_clip" )
-
+    
     AddClip( clip )
 
 end )
 
-net.Receive( "clippy_clips", function()
+net.Receive( "clippy_clips", function( len )
 
     local tbl = net.ReadStructure( "clippy_clips" )
     local clips = tbl.Clips
 
-    Clippy.Log("received ".. tostring( #clips ) .." clips to load from server")
+    Clippy.Log("received ".. tostring( #clips ) .." clips to load from server [".. tostring( len / 1000 ) .."kb]")
 
     for _, clip in pairs( clips ) do
         
@@ -287,7 +359,7 @@ net.Receive( "clippy_clips", function()
 
     if ( IsValid( LocalPlayer() ) ) then
 
-        Clippy.ChatPrint( LocalPlayer(), "loaded ".. tostring( #clips ) .." clips from the server" )
+        Clippy.ChatPrint( LocalPlayer(), "loaded ".. tostring( #clips ) .." clips from the server [".. tostring( len / 1000 ) .."kb]" )
         
     end
 
@@ -295,36 +367,59 @@ end )
 
 net.Receive( "clippy_undo", function()
 
-    local ent = net.ReadEntity()
-    local id = net.ReadUInt( 8 )
-
-    if ( IsValid( ent ) ) then
-
-        if ( ent.ClippyData != nil and ent.ClippyData[id] ) then
-            
-            table.remove( ent.ClippyData, id )
-
-            RefreshEditorTool()
-
-        end
-
-    end
+--    local ent = net.ReadEntity()
+--    local id = net.ReadUInt( 8 )
+--
+--    if ( IsValid( ent ) ) then
+--
+--        if ( ent.ClippyData != nil and ent.ClippyData[id] ) then
+--            
+--            table.remove( ent.ClippyData, id )
+--
+--            RefreshEditorTool()
+--
+--        end
+--
+--    end
 
 end )
 
 net.Receive( "clippy_reset", function()
 
-    local ent = net.ReadEntity()
+--    local ent = net.ReadEntity()
+--
+--    if ( IsValid( ent ) ) then
+--        
+--        ent.RenderOverride = nil
+--        ent.ClippyData = nil
+--
+--        ent:SetNoDraw( false )
+--        ent:DisableMatrix( "RenderMultiply" )
+--
+--        RefreshEditorTool()
+--
+--    end
 
-    if ( IsValid( ent ) ) then
-        
-        ent.RenderOverride = nil
-        ent.ClippyData = nil
+end )
 
-        ent:SetNoDraw( false )
-        ent:DisableMatrix( "RenderMultiply" )
+-- Process the queue, applying the render override as the entities become valid and shifting the clips into the cache
+hook.Add( "Think", "ClippyThink", function()
 
-        RefreshEditorTool()
+    for index, clips in pairs( Clippy.Queue ) do
+
+        local ent = Entity( index )
+
+        if ( IsValid( ent ) ) then
+
+            Clippy.Data[ index ] = Clippy.Queue[ index ]
+            Clippy.Queue[ index ] = nil
+
+            SetupEnt( ent )
+
+            Clippy.Log("applying renderoverride to ".. tostring( index ) .." and removing from the queue")
+            Clippy.Log(tostring(table.Count( Clippy.Queue )) .. " ents remaining in queue")
+
+        end
 
     end
 

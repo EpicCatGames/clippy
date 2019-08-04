@@ -27,7 +27,7 @@ if CLIENT then
 
         p:AddControl( "Header", { Text = "#tool.clippy_editor.name", Description = "#tool.clippy_editor.desc" } )
 
-        if ( IsValid( Clippy.Editor.SelectedEnt ) and Clippy.Editor.SelectedEnt.ClippyData != nil and #Clippy.Editor.SelectedEnt.ClippyData > 0 ) then
+        if ( IsValid( Clippy.Editor.SelectedEnt ) and Clippy.Data[Clippy.Editor.SelectedEnt:EntIndex()] != nil and #Clippy.Data[Clippy.Editor.SelectedEnt:EntIndex()] > 0 ) then
 
             -- Clip list
             local Label = vgui.Create( "DLabel", p )
@@ -49,7 +49,7 @@ if CLIENT then
             if ( IsValid( Clippy.Editor.SelectedEnt ) ) then
 
                 local ent = Clippy.Editor.SelectedEnt
-                local clips = ent.ClippyData or { }
+                local clips = Clippy.Data[Clippy.Editor.SelectedEnt:EntIndex()] or { }
 
                 for id, clip in pairs( clips ) do
                     

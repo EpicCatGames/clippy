@@ -6,7 +6,7 @@ include("clippy/lib/sh_netstructures.lua")
 
 -- Setup network messages
 net.RegisterStructure( "clippy_clip", {
-    Ent = STRUCTURE_ENTITY,
+    EntIndex = STRUCTURE_INT16,
     Version = STRUCTURE_INT8,
     Ang = STRUCTURE_STRING,
     Distance = STRUCTURE_STRING,
@@ -28,7 +28,7 @@ if SERVER then
 end
 
 -- Setup clippy
-Clippy = Clippy or { Version = 1, Debug = false }
+Clippy = Clippy or { Version = 1, Debug = true }
 
 -- Table that stores all of our entities with registered clips
 Clippy.Clips = Clippy.Clips or { }
@@ -146,7 +146,7 @@ hook.Add( "InitPostEntity", "ClippyInitPostEntity", function()
     if CLIENT then
 
         -- Request clips from the server after loading in
-        timer.Simple( 10, function()
+        timer.Simple( 5, function()
 
             if ( IsValid( LocalPlayer() ) ) then
 
@@ -157,19 +157,6 @@ hook.Add( "InitPostEntity", "ClippyInitPostEntity", function()
             end
         
         end )
-
-    else
-
-        --[[
-        -- This will stop the old VisClip from doing much, but it should be removed entirely from servers using Clippy
-        if ( SendPropClip ) then
-
-            SendPropClip = function() end
-
-            Clippy.Log("removed visual clips SendPropClip function for compatibility, but you should remove visual clip from your server entirely if you use clippy.")
-            
-        end
-        --]]
 
     end
 
